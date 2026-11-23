@@ -6,3 +6,7 @@ venv/
 *.log
 .DS_Store
 Thumbs.db
+
+# Documentation de développement et consignes locales (non publiées)
+docs/
+CLAUDE.md
