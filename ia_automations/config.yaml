@@ -1,0 +1,25 @@
+name: "Automations IA (Groq)"
+version: "1.0.8"
+slug: ia_automations
+url: "https://github.com/tolrac/ha-addon-ia-automations"
+description: "Décris une automatisation en une phrase : l'IA (Groq Cloud) rédige les étapes, tu les vérifies, une touche les ajoute à Home Assistant."
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+ingress_entry: app
+panel_icon: mdi:robot-happy-outline
+panel_title: "Automations IA"
+panel_admin: true
+homeassistant_api: true
+options:
+  groq_api_key: ""
+  groq_model: "openai/gpt-oss-120b"
+  language: "fr"
+schema:
+  groq_api_key: password?
+  groq_model: str
+  language: list(fr|en)
