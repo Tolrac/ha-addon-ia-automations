@@ -234,12 +234,31 @@ Exemple de réponse pour « Chaque jour au coucher du soleil, ferme les stores e
 """
 
 
-def build_messages(catalog, prompt, current=None):
+HUB_PROMPT = """
+
+Centre de notifications (obligatoire pour toute notification) :
+Pour envoyer une notification, n'utilise JAMAIS un service notify.* : utilise TOUJOURS cette action, qui passe par le Centre de notifications :
+{"event": "notification_hub_send", "event_data": {"title": "...", "message": "...", "target": "present", "tag": "...", "hold_until_home": false, "cancel_when": [], "actions": []}}
+Champs de "event_data" (seuls "message" et "title" sont utiles en général) :
+- "target" : "present" (personnes à la maison, par défaut), "nearest" (personnes les plus proches de la maison : à utiliser quand la maison est vide), "all" (tout le monde), ou une personne ("person.xxx" de la liste), ou une liste de ces valeurs.
+- "hold_until_home": true garde la notification en attente tant que personne n'est à la maison (utile pour une information sans urgence, par exemple une lessive terminée).
+- "tag" : identifiant de la notification. Une notification plus récente avec le même tag remplace l'ancienne (ex. "aspirateur" pour « démarre » puis « terminé »). Donne toujours un tag court en minuscules sans espace.
+- "cancel_when" : liste de conditions qui retirent la notification quand l'une devient vraie : {"home_occupied": true} (la maison est de nouveau occupée) ou {"entity_id": "light.xxx", "state": "off"}.
+- "actions" : boutons de la notification : {"title": "Tout éteindre", "do": [{"action": "light.turn_off", "target": {"entity_id": "light.xxx"}}]} ; appuyer sur un bouton exécute "do" puis efface la notification partout.
+- "data" : options facultatives pour l'application mobile, par exemple {"image": "/local/photo.jpg"}.
+Le message peut contenir un template Jinja, par exemple "{{ states('sensor.xxx') }}".
+Exemple : {"event": "notification_hub_send", "event_data": {"title": "Maison vide", "message": "Des lumières sont encore allumées.", "target": "nearest", "tag": "lumieres_allumees", "cancel_when": [{"home_occupied": true}], "actions": [{"title": "Tout éteindre", "do": [{"action": "light.turn_off", "target": {"entity_id": "all"}}]}]}}
+"""
+
+
+def build_messages(catalog, prompt, current=None, context_name=None):
     ctx = select_context(catalog, prompt, json.dumps(current, ensure_ascii=False) if current else "")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     system = SYSTEM_PROMPT.format(
         lang_name="français" if LANG == "fr" else "English", now=now, tz=catalog["tz"]
     )
+    if context_name == "notification_hub":
+        system += HUB_PROMPT
     context = "Entités disponibles (entity_id | nom | pièce | état) :\n" + fmt_entities(ctx)
     if catalog["notify"]:
         context += "\n\nServices de notification : " + ", ".join(catalog["notify"][:15])
@@ -414,9 +433,9 @@ async def call_groq(session, messages):
     raise GroqError("Groq n'a pas répondu correctement.")
 
 
-async def generate(session, prompt, current=None):
+async def generate(session, prompt, current=None, context_name=None):
     catalog = await load_catalog(session)
-    messages = build_messages(catalog, prompt, current)
+    messages = build_messages(catalog, prompt, current, context_name)
     raw = await call_groq(session, messages)
     auto = normalize(extract_json(raw))
     warnings = [str(w) for w in extract_json(raw).get("warnings", []) if w] if raw else []
@@ -496,7 +515,8 @@ async def api_generate(request):
     if len(prompt) > 1500:
         return web.json_response({"error": "Phrase trop longue (1500 caractères max)."}, status=400)
     current = data.get("current")
-    return web.json_response(await generate(request.app["session"], prompt, current))
+    context_name = "notification_hub" if data.get("context") == "notification_hub" else None
+    return web.json_response(await generate(request.app["session"], prompt, current, context_name))
 
 
 async def api_validate(request):

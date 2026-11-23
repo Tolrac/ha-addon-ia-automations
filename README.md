@@ -22,6 +22,12 @@ Décris une automatisation en une phrase : l'IA de [Groq Cloud](https://console.
 - **Intégré à l'interface** : lien dans la barre latérale (ingress), interface sur deux colonnes
   (chat à gauche, résultat à droite) qui suit le thème de Home Assistant.
 
+## Avec le Centre de notifications
+
+Associée à l'application [Centre de notifications](https://github.com/Tolrac/ha-addon-notification-hub), elle peut
+être affichée dans son panneau latéral pour créer en une phrase l'automatisation qui envoie une notification
+(destinataires, mise en attente, remplacement, annulation). Aucune configuration n'est nécessaire.
+
 ## Prérequis
 
 - Home Assistant OS ou Supervised (le Superviseur est nécessaire pour les applications).

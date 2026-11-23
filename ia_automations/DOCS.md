@@ -19,6 +19,15 @@ vérifies (résumé, canevas, étapes ou YAML), puis un clic les ajoute à Home 
 3. L'automatisation proposée est vérifiée (entités existantes) puis affichée.
 4. « Ajouter » crée l'automatisation dans Home Assistant. « Annuler » la supprime.
 
+## Intégration au Centre de notifications
+
+Si l'application **Centre de notifications** est installée, elle affiche Automations IA dans un panneau latéral pour
+créer l'automatisation d'une notification. Dans ce mode (`?embed=1&context=notification_hub`) :
+- l'en-tête et le bouton flottant sont masqués, les colonnes sont empilées ;
+- la phrase peut arriver pré-remplie (`prompt`) ;
+- l'IA connaît l'événement `notification_hub_send` et l'utilise à la place des services `notify.*` ;
+- l'ajout d'une automatisation prévient le Centre (message `ia-automation-created`).
+
 ## Confidentialité
 
 La clé API reste dans la configuration du module. Le module n'écoute que sur le réseau interne

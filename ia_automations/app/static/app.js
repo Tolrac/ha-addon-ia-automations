@@ -77,6 +77,17 @@ const S = {
   auto: null, yaml: "", names: {}, domains: {}, areas: {}, warnings: [], unknown: [],
   view: "resume", yamlEdit: false, busy: false, thinking: false, hideTip: false, chat: [],
 };
+/* Mode intégré : l'application est affichée dans le Centre de notifications (?embed=1&context=notification_hub&prompt=…). */
+const PARAMS = new URLSearchParams(location.search);
+const EMBED = PARAMS.get("embed") === "1";
+const CONTEXT = PARAMS.get("context") === "notification_hub" ? "notification_hub" : "";
+if (EMBED) document.documentElement.classList.add("embed");
+const HUB_EXAMPLES = [
+  "Quand la machine à laver termine, préviens-moi dès que je suis à la maison",
+  "Si la maison est vide et qu'une lumière reste allumée, prévenir la personne la plus proche avec un bouton pour tout éteindre",
+  "Quand l'aspirateur démarre, envoie une notification, et remplace-la quand il termine",
+  "Si la porte d'entrée reste ouverte 5 minutes, notifie les personnes présentes",
+];
 const EXAMPLES = [
   "Chaque jour au coucher du soleil, ferme les stores et allume le lampadaire",
   "Éteins toutes les lumières à minuit",
@@ -237,6 +248,18 @@ function describeAction(a) {
   if (a.choose) return { ...base, icon: "branch", color: "#8a8ea0", main: `Choisir selon ${a.choose.length} cas`, rows: [] };
   if (a.repeat) return { ...base, icon: "bolt", color: "#8a8ea0", main: "Répéter des actions", rows: [] };
   if (a.parallel) return { ...base, icon: "bolt", color: "#8a8ea0", main: "Exécuter en parallèle", rows: [] };
+  if (a.event === "notification_hub_send") {
+    const e = a.event_data || {};
+    const rows = [];
+    if (e.title) rows.push(["Titre", e.title]);
+    if (e.message) rows.push(["Message", e.message]);
+    rows.push(["Destinataires", [].concat(e.target || "present").map((t) => ({ present: "présents", home: "présents", nearest: "plus proches", all: "tous" }[t] || String(t).replace(/^person\./, ""))).join(", ")]);
+    if (e.hold_until_home) rows.push(["Attente", "jusqu'au retour d'un destinataire"]);
+    if (e.tag) rows.push(["Tag (remplacement)", e.tag]);
+    if (e.cancel_when && e.cancel_when.length) rows.push(["Annulée si", `${[].concat(e.cancel_when).length} condition(s)`]);
+    if (e.actions && e.actions.length) rows.push(["Boutons", e.actions.map((b) => b.title).join(", ")]);
+    return { ...base, icon: "bell", color: "#009ac7", lead: "Envoyer une notification", soft: e.title ? `« ${e.title} »` : "", main: "Centre de notifications", rows };
+  }
   if (a.event) return { ...base, icon: "bell", color: "#8a8ea0", main: `Déclencher l'événement « ${a.event} »`, rows: [] };
   if (a.variables) return { ...base, icon: "code", color: "#8a8ea0", main: "Définir des variables", rows: [] };
   if (a.stop) return { ...base, icon: "bolt", color: "#8a8ea0", main: `Arrêter : ${a.stop}`, rows: [] };
@@ -340,7 +363,7 @@ function renderThread() {
   const el = $("#thread");
   let html = "";
   if (!S.chat.length) {
-    html = `<div class="hello"><strong>Dis-le en une phrase.</strong> L'IA rédige les étapes, tu les vérifies à droite, et une touche les ajoute à l'automatisation.<div class="examples">${EXAMPLES.map((x) => `<button class="chip-ex" type="button">${esc(x)}</button>`).join("")}</div></div>`;
+    html = `<div class="hello"><strong>Dis-le en une phrase.</strong> L'IA rédige les étapes, tu les vérifies à droite, et une touche les ajoute à l'automatisation.<div class="examples">${(CONTEXT ? HUB_EXAMPLES : EXAMPLES).map((x) => `<button class="chip-ex" type="button">${esc(x)}</button>`).join("")}</div></div>`;
   }
   S.chat.forEach((m) => { html += `<div class="msg ${m.role}">${esc(m.text)}${m.sub ? `<span class="sub">${esc(m.sub)}</span>` : ""}</div>`; });
   if (S.thinking) html += '<div class="msg bot typing"><div class="spinner"></div>L\'IA rédige…</div>';
@@ -397,7 +420,7 @@ async function generate(prompt, current = null, visible = null) {
   S.thinking = true; S.busy = true; showBanner("");
   renderThread(); renderResult();
   try {
-    const data = await api("generate", { method: "POST", body: { prompt, current } });
+    const data = await api("generate", { method: "POST", body: { prompt, current, context: CONTEXT || undefined } });
     setResult(data);
     const a = S.auto;
     const n = (k) => a[k].length;
@@ -432,6 +455,7 @@ async function addAutomation() {
   try {
     const res = await api("create", { method: "POST", body: { automation: S.auto } });
     const id = res.id;
+    if (EMBED) window.parent.postMessage({ type: "ia-automation-created", id, alias: S.auto.alias }, location.origin);
     const el = toast(`<span class="tick">${SVG.tick}</span><span>Automatisation ajoutée</span><button data-undo>Annuler</button><a href="/config/automation/edit/${esc(id)}" target="_top">Ouvrir</a>`);
     $("[data-undo]", el).onclick = async () => {
       try { await api(`automation/${id}`, { method: "DELETE" }); el.remove(); toast("<span>Automatisation supprimée</span>", 4000); }
@@ -570,6 +594,13 @@ try {
 
 (async function init() {
   renderThread(); renderResult();
+  const pre = PARAMS.get("prompt");
+  if (pre) {
+    const box = $("#prompt");
+    box.value = pre;
+    box.focus();
+    box.setSelectionRange(pre.length, pre.length);
+  }
   try {
     const st = await api("status");
     $("#status-line").textContent = `${st.model} · ${st.entities} entités · Home Assistant ${st.ha_version}`;
