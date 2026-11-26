@@ -363,6 +363,25 @@ def _fix_services(node):
             _fix_services(v)
 
 
+def fix_camera_links(node, pages):
+    """Un bouton « Ouvrir la caméra » dont le lien n'est pas une page de caméra de HA reçoit la page de caméra trouvée."""
+    cam_paths = [line.split(" | ")[0] for line in pages if "camera" in " ".join(norm_tokens(line))]
+    if not cam_paths:
+        return
+    cam = cam_paths[0]
+    def walk(n):
+        if isinstance(n, list):
+            for x in n:
+                walk(x)
+        elif isinstance(n, dict):
+            title = " ".join(norm_tokens(str(n.get("title", ""))))
+            if isinstance(n.get("uri"), str) and "camera" in title and n["uri"] not in cam_paths:
+                n["uri"] = cam
+            for v in n.values():
+                walk(v)
+    walk(node)
+
+
 def normalize(auto):
     out = {}
     out["alias"] = str(auto.get("alias") or "Nouvelle automatisation")
@@ -505,6 +524,7 @@ async def generate(session, prompt, current=None, context_name=None):
     messages = build_messages(catalog, prompt, current, context_name)
     raw = await call_groq(session, messages)
     auto = normalize(extract_json(raw))
+    fix_camera_links(auto["actions"], catalog.get("pages") or [])
     warnings = [str(w) for w in extract_json(raw).get("warnings", []) if w] if raw else []
     unknown = [e for e in collect_entities(auto) if e not in catalog["entities"] and not e.startswith(("group.", "notify."))]
     if unknown:
@@ -519,6 +539,7 @@ async def generate(session, prompt, current=None, context_name=None):
         try:
             raw2 = await call_groq(session, messages)
             auto = normalize(extract_json(raw2))
+            fix_camera_links(auto["actions"], catalog.get("pages") or [])
             warnings = [str(w) for w in extract_json(raw2).get("warnings", []) if w]
         except Exception as err:
             log.warning("Correction automatique impossible : %s", err)
