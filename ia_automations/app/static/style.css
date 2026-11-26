@@ -194,3 +194,7 @@ html.embed, html.embed body { height: 100%; }
 .embed .app { height: 100vh; min-height: 0; }
 .embed .chat { max-height: 62vh; } /* la conversation prend la hauteur de son contenu (exemples visibles sans défiler) */
 .embed .result { overflow-y: auto; }
+
+.sum-rows { margin-top: 6px; display: grid; gap: 2px; font-size: 13px; color: var(--ink); }
+.sum-rows span { color: var(--muted); margin-right: 4px; }
+.sum-rows span::after { content: " :"; }

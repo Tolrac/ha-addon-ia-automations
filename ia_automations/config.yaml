@@ -1,5 +1,5 @@
 name: "Automations IA (Groq)"
-version: "1.2.2"
+version: "1.2.3"
 slug: ia_automations
 url: "https://github.com/tolrac/ha-addon-ia-automations"
 description: "Décris une automatisation en une phrase : l'IA (Groq Cloud) rédige les étapes, tu les vérifies, une touche les ajoute à Home Assistant."

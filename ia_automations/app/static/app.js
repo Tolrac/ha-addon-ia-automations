@@ -141,7 +141,7 @@ const clock = (t) => String(t).replace(/:00$/, "");
 
 function serviceLabel(svc) {
   const [domain, name] = String(svc).split(".");
-  if (domain === "notify") return `Notification: Envoyer à ${String(name).replace(/^mobile_app_/, "").replace(/_/g, " ")}`;
+  if (domain === "notify") return name === "notify" ? "Notification: Envoyer une notification" : `Notification: Envoyer à ${String(name).replace(/^mobile_app_/, "").replace(/_/g, " ")}`;
   if (SPECIAL_LABEL[svc]) return `${DOMAIN_LABEL[domain] || domain}: ${SPECIAL_LABEL[svc]}`;
   const label = SERVICE_LABEL[name] || (name || svc).replace(/_/g, " ");
   return `${DOMAIN_LABEL[domain] || domain}: ${label}`;
@@ -261,7 +261,7 @@ function describeAction(a) {
       const data = dataSummary(a.data);
       if (data) rows.push(["Données", data]);
     }
-    return { ...base, color: domColor(dom), lead: "Effectuer l'action", soft: `« ${serviceLabel(a.action)} »`, main: `${serviceLabel(a.action)}`, chips, rows };
+    return { ...base, color: domColor(dom), lead: "Effectuer l'action", soft: `« ${serviceLabel(a.action)} »`, main: `${serviceLabel(a.action)}`, chips, rows, sum: dom === "notify" || a.action === "camera.snapshot" };
   }
   if ("delay" in a) return { ...base, icon: "hourglass", color: "#8a8ea0", main: `Attendre ${fmtDuration(a.delay)}`, rows: [] };
   if (a.wait_template || a.wait_for_trigger) return { ...base, icon: "hourglass", color: "#8a8ea0", main: "Attendre une condition", rows: a.timeout ? [["Délai maximal", fmtDuration(a.timeout)]] : [] };
@@ -280,7 +280,7 @@ function describeAction(a) {
     if (e.cancel_when && e.cancel_when.length) rows.push(["Annulée si", `${[].concat(e.cancel_when).length} condition(s)`]);
     if (e.data && e.data.image) rows.push(["Photo", shortLink(e.data.image)]);
     if (e.actions && e.actions.length) rows.push(["Boutons", e.actions.map(buttonText).join(" · ")]);
-    return { ...base, icon: "bell", color: "#009ac7", lead: "Envoyer une notification", soft: e.title ? `« ${e.title} »` : "", main: "Centre de notifications", rows };
+    return { ...base, icon: "bell", color: "#009ac7", lead: "Envoyer une notification", soft: e.title ? `« ${e.title} »` : "", main: "Centre de notifications", rows, sum: true };
   }
   if (a.event) return { ...base, icon: "bell", color: "#8a8ea0", main: `Déclencher l'événement « ${a.event} »`, rows: [] };
   if (a.variables) return { ...base, icon: "code", color: "#8a8ea0", main: "Définir des variables", rows: [] };
@@ -300,7 +300,8 @@ const iconHtml = (d) => `<span class="circle-ico" style="--ic:${d.color}">${SVG[
 
 function stepSummaryHtml(d) {
   const title = d.lead ? `${esc(d.lead)} <span class="soft">${esc(d.soft)}</span>` : esc(d.main);
-  return `<div class="sum-step">${iconHtml(d)}<div class="sum-body"><div class="sum-title">${title}</div>${d.chips.length ? `<div class="chips">${d.chips.map(chipHtml).join("")}</div>` : ""}</div></div>`;
+  const rows = d.sum && d.rows.length ? `<div class="sum-rows">${d.rows.map(([k, v]) => `<div><span>${esc(k)}</span> ${esc(v)}</div>`).join("")}</div>` : "";
+  return `<div class="sum-step">${iconHtml(d)}<div class="sum-body"><div class="sum-title">${title}</div>${d.chips.length ? `<div class="chips">${d.chips.map(chipHtml).join("")}</div>` : ""}${rows}</div></div>`;
 }
 
 function renderResume() {
