@@ -279,7 +279,7 @@ Exemple : {"event": "notification_hub_send", "event_data": {"title": "Maison vid
 
 CAMERA_PROMPT = """
 
-Photo de caméra dans la notification : à faire quand la notification concerne une porte, une fenêtre, un mouvement ou une présence et qu'une caméra est dans la liste, ou quand la demande parle de caméra, photo ou image. Étapes, dans cet ordre :
+Photo de caméra dans la notification : OBLIGATOIRE quand la notification concerne une porte, une fenêtre, un mouvement, une sonnette ou une présence et qu'une caméra est dans la liste, ou quand la demande parle de caméra, photo ou image. Étapes, dans cet ordre :
 1. {"action": "camera.snapshot", "target": {"entity_id": "camera.xxx"}, "data": {"filename": "/config/www/snapshots/<nom_court>.jpg"}}
 2. {"delay": "00:00:02"} (le temps que le fichier soit écrit)
 3. la notification, avec l'image « /local/snapshots/<nom_court>.jpg » et un bouton « Ouvrir la caméra » qui ouvre une page de la liste « Pages » (de préférence la page de la caméra ; sinon "/lovelace").
@@ -288,6 +288,16 @@ Choisis la caméra de la même pièce que le capteur, sinon la première de la l
 """
 CAMERA_NOTIFY = 'Avec un service notify : "data": {"message": "...", "title": "...", "data": {"image": "/local/snapshots/<nom_court>.jpg", "actions": [{"action": "URI", "title": "Ouvrir la caméra", "uri": "/page/vue"}]}}'
 CAMERA_HUB = 'Avec le Centre de notifications : "event_data": {"title": "...", "message": "...", "target": "present", "tag": "...", "data": {"image": "/local/snapshots/<nom_court>.jpg"}, "actions": [{"title": "Ouvrir la caméra", "uri": "/page/vue"}]}'
+
+
+PHOTO_WORDS = {"porte", "fenetre", "mouvement", "presence", "ouverture", "sonnette", "camera", "photo", "image", "snapshot", "door", "window", "motion", "doorbell", "portail"}
+NOTIFY_WORDS = {"notification", "notif", "notifie", "previen", "prevenir", "alerte", "alert", "avertis", "message", "envoie", "envoyer", "notify"}
+
+
+def wants_photo(prompt):
+    """La demande décrit une notification liée à une porte, un mouvement… : une photo de caméra est attendue."""
+    tokens = set(norm_tokens(prompt))
+    return bool(tokens & PHOTO_WORDS) and bool(tokens & NOTIFY_WORDS)
 
 
 def build_messages(catalog, prompt, current=None, context_name=None):
@@ -308,6 +318,11 @@ def build_messages(catalog, prompt, current=None, context_name=None):
         context += "\n\nServices de notification : " + ", ".join(catalog["notify"][:15])
     if catalog.get("pages"):
         context += "\n\nPages (liens pour les boutons, « lien | tableau › vue ») :\n" + "\n".join(catalog["pages"])
+    if cameras and wants_photo(prompt):
+        context += (
+            "\n\nConsigne : cette demande envoie une notification liée à une porte, une fenêtre ou un mouvement et une caméra existe : "
+            "ajoute la photo de la caméra (camera.snapshot, délai, image) et le bouton « Ouvrir la caméra », comme décrit dans le prompt système."
+        )
     if current:
         user = (
             f"{context}\n\nAutomatisation actuelle (JSON) :\n{json.dumps(current, ensure_ascii=False)}\n\n"
