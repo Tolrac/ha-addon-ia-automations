@@ -172,7 +172,7 @@ textarea.yaml-edit { width: 100%; min-height: 380px; border: 1px solid var(--acc
 
 /* Mode intégré (?embed=1) : sans en-tête ni bouton flottant, une colonne (chat au-dessus, résultat dessous). */
 .embed .app-header, .embed .fab-container { display: none; }
-.embed .layout { grid-template-columns: 1fr; grid-template-rows: minmax(200px, 38%) minmax(0, 1fr); gap: 12px; padding: 12px; }
+.embed .layout { grid-template-columns: 1fr; grid-template-rows: auto minmax(180px, 1fr); gap: 12px; padding: 12px; }
 .embed .result { padding-bottom: 12px; }
 
 /* Mobile / fenêtre étroite : une seule colonne */
@@ -192,5 +192,5 @@ textarea.yaml-edit { width: 100%; min-height: 380px; border: 1px solid var(--acc
 /* Mode intégré : doit rester après les règles « fenêtre étroite » (le panneau est plus étroit que 900 px). */
 html.embed, html.embed body { height: 100%; }
 .embed .app { height: 100vh; min-height: 0; }
-.embed .chat { max-height: none; }
+.embed .chat { max-height: 62vh; } /* la conversation prend la hauteur de son contenu (exemples visibles sans défiler) */
 .embed .result { overflow-y: auto; }
