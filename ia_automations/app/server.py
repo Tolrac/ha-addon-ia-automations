@@ -108,6 +108,28 @@ async def ws_commands(session, cmds):
     return results
 
 
+async def load_pages(session):
+    """Pages de Home Assistant utilisables dans un bouton de notification : « /tableau/vue | Tableau › Vue »."""
+    try:
+        (dashboards,) = await ws_commands(session, [{"type": "lovelace/dashboards/list"}])
+        dashboards = [{"url_path": None, "title": "Vue d'ensemble"}] + [d for d in (dashboards or []) if d.get("url_path")]
+        configs = await ws_commands(session, [{"type": "lovelace/config", **({"url_path": d["url_path"]} if d["url_path"] else {})} for d in dashboards])
+    except Exception as err:
+        log.warning("Pages indisponibles : %s", err)
+        return []
+    pages = []
+    for d, cfg in zip(dashboards, configs):
+        base = "/" + (d["url_path"] or "lovelace")
+        views = (cfg or {}).get("views") or []
+        if not views:
+            pages.append(f"{base} | {d.get('title') or base}")
+        for i, v in enumerate(views):
+            path = v.get("path") or str(i)
+            title = v.get("title") or path
+            pages.append(f"{base}/{path} | {d.get('title') or base} › {title}")
+    return pages[:40]
+
+
 async def load_catalog(session):
     """Entités, pièces, services de notification et configuration (mis en cache 60 s)."""
     if _cache["data"] and time.time() - _cache["t"] < 60:
@@ -123,6 +145,7 @@ async def load_catalog(session):
             {"type": "config/device_registry/list"},
         ],
     )
+    pages = await load_pages(session)
     area_names = {a["area_id"]: a["name"] for a in (areas or [])}
     dev_area = {d["id"]: d.get("area_id") for d in (dev_reg or [])}
     reg = {e["entity_id"]: e for e in (ent_reg or [])}
@@ -161,6 +184,7 @@ async def load_catalog(session):
         "entities": entities,
         "areas": area_names,
         "notify": notify,
+        "pages": pages,
         "tz": cfg.get("time_zone", "UTC"),
         "ha_version": cfg.get("version", ""),
         "location": cfg.get("location_name", ""),
@@ -222,6 +246,8 @@ Règles :
 - Heure fixe : {{"trigger": "time", "at": "07:30:00"}}. Jours : condition "time" avec "weekday": ["mon","tue",...].
 - Fermer des volets/stores : cover.close_cover ; les ouvrir : cover.open_cover.
 - Allumer/éteindre : <domaine>.turn_on / <domaine>.turn_off. Luminosité en pourcentage : "brightness_pct".
+- Un état qui doit durer (« reste ouvert 5 minutes », « pendant 10 min », « depuis une heure ») s'écrit avec UN SEUL déclencheur "state" (ou "numeric_state") portant "for": "00:05:00". N'utilise NI delay NI wait_for_trigger pour cela.
+- delay, choose, if, repeat, wait_for_trigger, event, variables sont des clés d'étape : {{"delay": "00:00:02"}}, {{"event": "..."}}. N'écris jamais "action": "delay".
 - N'ajoute pas de conditions ou de déclencheurs que la demande ne justifie pas.
 - Date et heure actuelles : {now} (fuseau {tz}).
 
@@ -251,6 +277,19 @@ Exemple : {"event": "notification_hub_send", "event_data": {"title": "Maison vid
 """
 
 
+CAMERA_PROMPT = """
+
+Photo de caméra dans la notification : à faire quand la notification concerne une porte, une fenêtre, un mouvement ou une présence et qu'une caméra est dans la liste, ou quand la demande parle de caméra, photo ou image. Étapes, dans cet ordre :
+1. {"action": "camera.snapshot", "target": {"entity_id": "camera.xxx"}, "data": {"filename": "/config/www/snapshots/<nom_court>.jpg"}}
+2. {"delay": "00:00:02"} (le temps que le fichier soit écrit)
+3. la notification, avec l'image « /local/snapshots/<nom_court>.jpg » et un bouton « Ouvrir la caméra » qui ouvre une page de la liste « Pages » (de préférence la page de la caméra ; sinon "/lovelace").
+{notif}
+Choisis la caméra de la même pièce que le capteur, sinon la première de la liste. Dans "warnings", dis quelle caméra tu as choisie et rappelle que le dossier /config/www/snapshots doit exister.
+"""
+CAMERA_NOTIFY = 'Avec un service notify : "data": {"message": "...", "title": "...", "data": {"image": "/local/snapshots/<nom_court>.jpg", "actions": [{"action": "URI", "title": "Ouvrir la caméra", "uri": "/page/vue"}]}}'
+CAMERA_HUB = 'Avec le Centre de notifications : "event_data": {"title": "...", "message": "...", "target": "present", "tag": "...", "data": {"image": "/local/snapshots/<nom_court>.jpg"}, "actions": [{"title": "Ouvrir la caméra", "uri": "/page/vue"}]}'
+
+
 def build_messages(catalog, prompt, current=None, context_name=None):
     ctx = select_context(catalog, prompt, json.dumps(current, ensure_ascii=False) if current else "")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -259,9 +298,16 @@ def build_messages(catalog, prompt, current=None, context_name=None):
     )
     if context_name == "notification_hub":
         system += HUB_PROMPT
+    cameras = [e for e in catalog["entities"].values() if e["domain"] == "camera"]
+    if cameras:
+        system += CAMERA_PROMPT.replace("{notif}", CAMERA_HUB if context_name == "notification_hub" else CAMERA_NOTIFY)
+        shown = {e["id"] for e in ctx}
+        ctx = ctx + [e for e in cameras if e["id"] not in shown][:8]
     context = "Entités disponibles (entity_id | nom | pièce | état) :\n" + fmt_entities(ctx)
     if catalog["notify"]:
         context += "\n\nServices de notification : " + ", ".join(catalog["notify"][:15])
+    if catalog.get("pages"):
+        context += "\n\nPages (liens pour les boutons, « lien | tableau › vue ») :\n" + "\n".join(catalog["pages"])
     if current:
         user = (
             f"{context}\n\nAutomatisation actuelle (JSON) :\n{json.dumps(current, ensure_ascii=False)}\n\n"
@@ -282,11 +328,17 @@ def extract_json(text):
     return json.loads(text[start : end + 1])
 
 
+STEP_KEYS = ("delay", "choose", "if", "repeat", "wait_for_trigger", "wait_template", "parallel", "sequence", "stop", "event", "variables")
+
+
 def _fix_services(node):
     if isinstance(node, list):
         for item in node:
             _fix_services(item)
     elif isinstance(node, dict):
+        # « action »: « delay » (ou choose, event…) n'existe pas : ce sont des clés d'étape
+        if node.get("action") in STEP_KEYS and node["action"] in node:
+            del node["action"]
         if "service" in node and "action" not in node and isinstance(node["service"], str):
             items = list(node.items())
             node.clear()

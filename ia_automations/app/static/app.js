@@ -37,7 +37,7 @@ const SERVICE_LABEL = {
 const SPECIAL_LABEL = {
   "light.turn_on": "Allumer la lumière", "light.turn_off": "Éteindre la lumière", "light.toggle": "Basculer la lumière",
   "switch.turn_on": "Activer l'interrupteur", "switch.turn_off": "Désactiver l'interrupteur",
-  "scene.turn_on": "Activer la scène", "script.turn_on": "Lancer le script", "fan.turn_on": "Allumer le ventilateur",
+  "camera.snapshot": "Prendre une photo", "scene.turn_on": "Activer la scène", "script.turn_on": "Lancer le script", "fan.turn_on": "Allumer le ventilateur",
   "fan.turn_off": "Éteindre le ventilateur", "climate.turn_on": "Allumer le thermostat", "climate.turn_off": "Éteindre le thermostat",
 };
 const STATE_LABEL = {
@@ -115,7 +115,11 @@ function chipsFor(node) {
   return chips;
 }
 const fmtDuration = (d) => {
-  if (typeof d === "string") return d.replace(/^00:/, "").replace(/^0/, "");
+  if (typeof d === "string") {
+    const m = d.match(/^(\d+):(\d+):(\d+)$/);
+    if (m) return fmtDuration({ hours: +m[1], minutes: +m[2], seconds: +m[3] });
+    return d;
+  }
   if (d && typeof d === "object") {
     const p = [];
     if (d.hours) p.push(`${d.hours} h`);
@@ -231,15 +235,32 @@ function describeCondition(c) {
   }
 }
 
+const shortLink = (u) => String(u).replace(/^https?:\/\/[^/]+/, "");
+const buttonText = (b) => {
+  const dest = b.uri ? ` → ${shortLink(b.uri)}` : (b.do || []).length ? ` → ${b.do.length} action(s)` : "";
+  return `${b.title || b.action || "Bouton"}${dest}`;
+};
+
 function describeAction(a) {
   const base = { icon: "play", color: "#1fb5ff", chips: [], rows: [] };
   if (a.action) {
     const dom = String(a.action).split(".")[0];
     const chips = chipsFor(a);
-    const data = dataSummary(a.data);
+    const d = a.data || {};
     const rows = [];
     if (chips.length) rows.push(["Cible", chips.map((c) => c.name).join(", ")]);
-    if (data) rows.push(["Données", data]);
+    if (dom === "notify") {
+      const m = d.data || {};
+      if (d.title) rows.push(["Titre", d.title]);
+      if (d.message) rows.push(["Message", d.message]);
+      if (m.image) rows.push(["Photo", shortLink(m.image)]);
+      if (Array.isArray(m.actions) && m.actions.length) rows.push(["Boutons", m.actions.map(buttonText).join(" · ")]);
+    } else if (a.action === "camera.snapshot") {
+      if (d.filename) rows.push(["Enregistrée dans", d.filename]);
+    } else {
+      const data = dataSummary(a.data);
+      if (data) rows.push(["Données", data]);
+    }
     return { ...base, color: domColor(dom), lead: "Effectuer l'action", soft: `« ${serviceLabel(a.action)} »`, main: `${serviceLabel(a.action)}`, chips, rows };
   }
   if ("delay" in a) return { ...base, icon: "hourglass", color: "#8a8ea0", main: `Attendre ${fmtDuration(a.delay)}`, rows: [] };
@@ -257,7 +278,8 @@ function describeAction(a) {
     if (e.hold_until_home) rows.push(["Attente", "jusqu'au retour d'un destinataire"]);
     if (e.tag) rows.push(["Tag (remplacement)", e.tag]);
     if (e.cancel_when && e.cancel_when.length) rows.push(["Annulée si", `${[].concat(e.cancel_when).length} condition(s)`]);
-    if (e.actions && e.actions.length) rows.push(["Boutons", e.actions.map((b) => b.title).join(", ")]);
+    if (e.data && e.data.image) rows.push(["Photo", shortLink(e.data.image)]);
+    if (e.actions && e.actions.length) rows.push(["Boutons", e.actions.map(buttonText).join(" · ")]);
     return { ...base, icon: "bell", color: "#009ac7", lead: "Envoyer une notification", soft: e.title ? `« ${e.title} »` : "", main: "Centre de notifications", rows };
   }
   if (a.event) return { ...base, icon: "bell", color: "#8a8ea0", main: `Déclencher l'événement « ${a.event} »`, rows: [] };
